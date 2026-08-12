@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <h1>候補を確認</h1>
+    <div class="candidate-card">
+        <div class="candidate-header">
+            <strong>{{ candidate['provider'] }}</strong>
+            <span>{{ candidate['identifier'] }}</span>
+        </div>
+        <p><strong>タイトル:</strong> {{ candidate['title'] }}</p>
+        <p><strong>読み:</strong> {{ candidate['reading'] or '未設定' }}</p>
+        <p><strong>種別:</strong> {{ candidate['media_type'] }}</p>
+        <p><strong>形式:</strong> {{ candidate['format_type'] or '未設定' }}</p>
+        <p><strong>出版社:</strong> {{ candidate['publisher'] or '未設定' }}</p>
+        <p><strong>購入先:</strong> {{ candidate['purchase_source'] or '未設定' }}</p>
+        <p><strong>著者:</strong> {{ candidate['authors'] | reject('equalto', '') | join(', ') if candidate['authors'] else '未設定' }}</p>
+        <p><strong>シリーズ:</strong> {{ candidate['series'] | reject('equalto', '') | join(', ') if candidate['series'] else '未設定' }}</p>
+        <p><strong>タグ:</strong> {{ candidate['tags'] | reject('equalto', '') | join(', ') if candidate['tags'] else '未設定' }}</p>
+    </div>
+
+    <form method="post" action="{{ url_for('lookup_apply') }}">
+        <input type="hidden" name="title" value="{{ candidate['title'] }}">
+        <input type="hidden" name="reading" value="{{ candidate['reading'] }}">
+        <input type="hidden" name="media_type" value="{{ candidate['media_type'] }}">
+        <input type="hidden" name="format_type" value="{{ candidate['format_type'] }}">
+        <input type="hidden" name="publisher" value="{{ candidate['publisher'] }}">
+        <input type="hidden" name="purchase_source" value="{{ candidate['purchase_source'] }}">
+        <input type="hidden" name="authors" value="{{ candidate['authors'] | join('\n') }}">
+        <input type="hidden" name="series" value="{{ candidate['series'] | join('\n') }}">
+        <input type="hidden" name="tags" value="{{ candidate['tags'] | join('\n') }}">
+        <div class="actions">
+            <button type="submit">この候補を採用</button>
+            <a class="button secondary" href="{{ url_for('lookup', identifier=session.get('last_lookup_identifier', candidate['identifier']), search_media_type=session.get('last_lookup_media_type', '自動')) }}">戻る</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

@@ -1,0 +1,12 @@
+{
+  "api_providers": [
+    "国会図書館",
+    "OpenBD",
+    "楽天ブックス",
+    "Discogs",
+    "Amazon"
+  ],
+  "json_file": "",
+  "rakuten_app_id": "",
+  "rakuten_access_key": ""
+}

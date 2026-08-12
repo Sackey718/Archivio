@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">概要</p>
+            <h1>ダッシュボード</h1>
+        </div>
+    </div>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <span>総作品数</span>
+            <strong>{{ total_works }}</strong>
+        </div>
+        <div class="stat-card">
+            <span>総バージョン数</span>
+            <strong>{{ total_versions }}</strong>
+        </div>
+        <div class="stat-card">
+            <span>未読</span>
+            <strong>{{ unread }}</strong>
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="section-header compact">
+        <div>
+            <p class="eyebrow">統計</p>
+            <h2>種別別</h2>
+        </div>
+    </div>
+    <ul class="list list-card">
+        {% for item in by_media %}
+            <li><span>{{ item['media_type'] }}</span><strong>{{ item['count'] }}</strong></li>
+        {% else %}
+            <li class="empty-state">まだ登録されたメディアはありません。</li>
+        {% endfor %}
+    </ul>
+</section>
+
+<section class="panel">
+    <div class="section-header compact">
+        <div>
+            <p class="eyebrow">更新</p>
+            <h2>最近更新した作品</h2>
+        </div>
+    </div>
+    <ul class="list list-card">
+        {% for work in recent %}
+            <li><a href="{{ url_for('work_detail', work_id=work['id']) }}">{{ work['title'] }}</a></li>
+        {% else %}
+            <li class="empty-state">作品がありません。</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}

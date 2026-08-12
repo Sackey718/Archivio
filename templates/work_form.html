@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel large-form">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">登録</p>
+            <h1>{% if work %}作品を編集{% else %}新規登録{% endif %}</h1>
+        </div>
+    </div>
+
+    <form method="post" action="{{ url_for('lookup') }}" class="filter-form lookup-inline">
+        <input type="text" name="identifier" value="" placeholder="ISBN / JAN / ASIN を入力" class="lookup-identifier-input">
+        <button type="submit">検索</button>
+    </form>
+
+    <form method="post">
+        <div class="form-grid">
+            <label>
+                タイトル
+                <input type="text" name="title" value="{{ work['title'] if work else defaults['title'] if defaults else '' }}" required>
+            </label>
+            <label>
+                読み
+                <input type="text" name="reading" value="{{ work['reading'] if work else defaults['reading'] if defaults else '' }}">
+            </label>
+            <label id="author-field">
+                著者
+                <input type="text" name="authors" value="{{ authors if authors else '' }}" placeholder="例: 東野圭吾 / 村上春樹">
+            </label>
+            <label>
+                評価
+                <select name="evaluation">
+                    <option value="">未評価</option>
+                    <option value="1" {% if work and work['evaluation'] == 1 %}selected{% endif %}>★☆☆☆☆</option>
+                    <option value="2" {% if work and work['evaluation'] == 2 %}selected{% endif %}>★★☆☆☆</option>
+                    <option value="3" {% if work and work['evaluation'] == 3 %}selected{% endif %}>★★★☆☆</option>
+                    <option value="4" {% if work and work['evaluation'] == 4 %}selected{% endif %}>★★★★☆</option>
+                    <option value="5" {% if work and work['evaluation'] == 5 %}selected{% endif %}>★★★★★</option>
+                </select>
+            </label>
+            <label>
+                状態
+                <select name="status">
+                    <option value="未読" {% if work and version and version['status'] == '未読' %}selected{% endif %}>未読</option>
+                    <option value="読書中" {% if work and version and version['status'] == '読書中' %}selected{% endif %}>読書中</option>
+                    <option value="読了" {% if work and version and version['status'] == '読了' %}selected{% endif %}>読了</option>
+                </select>
+            </label>
+            <label>
+                メディア種別
+                <select name="media_type">
+                    <option value="書籍" {% if work and version and version['media_type'] == '書籍' %}selected{% endif %}>書籍</option>
+                    <option value="マンガ" {% if work and version and version['media_type'] == 'マンガ' %}selected{% endif %}>マンガ</option>
+                    <option value="雑誌" {% if work and version and version['media_type'] == '雑誌' %}selected{% endif %}>雑誌</option>
+                    <option value="CD" {% if work and version and version['media_type'] == 'CD' %}selected{% endif %}>CD</option>
+                    <option value="DVD" {% if work and version and version['media_type'] == 'DVD' %}selected{% endif %}>DVD</option>
+                    <option value="Blu-ray" {% if work and version and version['media_type'] == 'Blu-ray' %}selected{% endif %}>Blu-ray</option>
+                    <option value="4K UHD" {% if work and version and version['media_type'] == '4K UHD' %}selected{% endif %}>4K UHD</option>
+                </select>
+            </label>
+            <label>
+                形式 / 版
+                <input type="text" name="format_type" value="{{ version['format_type'] if version else defaults['format_type'] if defaults else '' }}" placeholder="例: 単行本 / 文庫版 / アルバム / 初回限定盤 / 特装版">
+            </label>
+            <label>
+                巻・号
+                <input type="text" name="volume" value="{{ version['volume'] if version else '' }}" placeholder="例: 1巻 / 2024年10月号 / Disc 1">
+            </label>
+            <label>
+                出版社
+                <input type="text" name="publisher" value="{{ version['publisher'] if version else defaults['publisher'] if defaults else '' }}">
+            </label>
+            <label>
+                購入先
+                <input type="text" name="purchase_source" value="{{ version['purchase_source'] if version else defaults['purchase_source'] if defaults else '' }}" placeholder="例: Amazon / 直接購入 / 友人から">
+            </label>
+            <label>
+                所有場所
+                <input type="text" name="location" value="{{ version['location'] if version else '' }}">
+            </label>
+            <label>
+                プラットフォーム
+                <input type="text" name="platform" value="{{ version['platform'] if version else '' }}">
+            </label>
+            <label>
+                バージョン名
+                <input type="text" name="version_title" value="{{ version['title'] if version else defaults['version_title'] if defaults else '' }}">
+            </label>
+            <label>
+                タグ
+                <input type="text" name="tags" value="{{ tags if tags else defaults['tags'] if defaults else '' }}" placeholder="例: ミステリー, お気に入り">
+            </label>
+            <label>
+                シリーズ
+                <input type="text" name="series" value="{{ series if series else defaults['series'] if defaults else '' }}" placeholder="例: シリーズX, シリーズY">
+            </label>
+            <label class="full-width">
+                人物
+                <textarea name="people" placeholder="例: 東野圭吾|著者&#10;Aさん|原作">{{ people if people else '' }}</textarea>
+            </label>
+            <label class="full-width">
+                メモ
+                <textarea name="notes">{{ work['notes'] if work else '' }}</textarea>
+            </label>
+        </div>
+        <div class="form-hint">
+            例: 書籍は「単行本 / 文庫版」、CDは「アルバム / シングル」、DVD/Blu-ray は「通常版 / 初回限定版 / 特装版」などを入力してください。
+        </div>
+        <div class="actions">
+            <button type="submit">保存</button>
+            <a class="button secondary" href="{{ url_for('work_list') }}">キャンセル</a>
+        </div>
+    </form>
+</section>
+<script>
+const mediaTypeSelect = document.querySelector('select[name="media_type"]');
+const authorField = document.getElementById('author-field');
+const authorInput = authorField?.querySelector('textarea');
+
+function updateAuthorField() {
+    const isBook = mediaTypeSelect && mediaTypeSelect.value === '書籍';
+    if (!authorField || !authorInput) {
+        return;
+    }
+    authorField.style.display = isBook ? '' : 'none';
+    authorInput.disabled = !isBook;
+}
+
+if (mediaTypeSelect) {
+    mediaTypeSelect.addEventListener('change', updateAuthorField);
+    updateAuthorField();
+}
+</script>
+{% endblock %}

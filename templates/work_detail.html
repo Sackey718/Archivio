@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">作品</p>
+            <h1>{{ work['title'] }}</h1>
+        </div>
+    </div>
+    <div class="meta-row">
+        <span>読み: {{ work['reading'] or '未設定' }}</span>
+        <span>評価: {{ work['evaluation'] if work['evaluation'] is not none else '未評価' }}</span>
+        <span>著者: {{ authors | join(', ') if authors else '未設定' }}</span>
+    </div>
+
+    <div class="detail-section">
+        <h2>バージョン</h2>
+        {% if versions %}
+            <ul class="list list-card">
+                {% for version in versions %}
+                    <li>
+                        <strong>{{ version['title'] }}</strong>
+                        <div>{{ version['media_type'] }} / {{ version['format_type'] or '形式未設定' }} / {{ version['status'] }}</div>
+                        <div>場所: {{ version['location'] or '未設定' }} / 購入先: {{ version['purchase_source'] or '未設定' }}</div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-state">バージョンはまだありません。</p>
+        {% endif %}
+    </div>
+
+    <div class="detail-section">
+        <h2>タグ</h2>
+        {% if tags %}
+            <div class="tag-list">
+                {% for tag in tags %}
+                    <span class="tag">{{ tag }}</span>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="empty-state">タグはありません。</p>
+        {% endif %}
+    </div>
+
+    <div class="detail-section">
+        <h2>シリーズ</h2>
+        {% if series %}
+            <ul class="list list-card">
+                {% for item in series %}
+                    <li>{{ item['name'] }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-state">シリーズ未設定</p>
+        {% endif %}
+    </div>
+
+    <div class="detail-section">
+        <h2>人物</h2>
+        {% if people %}
+            <ul class="list list-card">
+                {% for person in people %}
+                    <li>{{ person['name'] }} ({{ person['role'] or '役割未設定' }})</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-state">人物は未設定です。</p>
+        {% endif %}
+    </div>
+
+    <div class="actions">
+        <a class="button" href="{{ url_for('work_edit', work_id=work['id']) }}">編集</a>
+        <form action="{{ url_for('work_delete', work_id=work['id']) }}" method="post" onsubmit="return confirm('本当に削除しますか？');">
+            <button type="submit" class="danger">削除</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

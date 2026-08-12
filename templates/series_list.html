@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">分類</p>
+            <h1>シリーズ一覧</h1>
+        </div>
+    </div>
+    {% if rows %}
+        <ul class="list list-card">
+            {% for row in rows %}
+                <li><a href="{{ url_for('work_list', series=row['name']) }}">{{ row['name'] }} ({{ row['count'] }})</a></li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="empty-state">シリーズはまだありません。</p>
+    {% endif %}
+</section>
+{% endblock %}

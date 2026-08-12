@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel settings-panel">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">システム</p>
+            <h1>設定</h1>
+        </div>
+    </div>
+
+    <form method="post" class="form-grid single-column settings-form">
+        <label>
+            library.json の保存先
+            <input type="text" name="json_file" value="{{ json_file }}" placeholder="例: C:\\data\\library.json / library.json">
+        </label>
+        <div class="info-badge">
+            現在の設定: <strong>{{ json_file }}</strong>
+        </div>
+        <div class="actions">
+            <button type="submit">保存</button>
+        </div>
+    </form>
+</section>
+
+<section class="panel settings-panel">
+    <div class="section-header compact">
+        <div>
+            <p class="eyebrow">データ</p>
+            <h2>データ管理</h2>
+        </div>
+    </div>
+    <div class="button-row">
+        <a class="button secondary" href="{{ url_for('import_library') }}">インポート</a>
+        <a class="button secondary" href="{{ url_for('export_library') }}">エクスポート</a>
+    </div>
+</section>
+{% endblock %}

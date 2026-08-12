@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <h1>外部識別子検索</h1>
+    <form method="post" class="filter-form">
+        <input type="text" name="identifier" value="{{ identifier }}" placeholder="ISBN / JAN / ASIN を入力">
+        <input type="hidden" name="search_media_type" value="自動">
+        <button type="submit">候補検索</button>
+    </form>
+
+    {% if candidates %}
+        <div class="candidate-list">
+            {% for candidate in candidates %}
+                <div class="candidate-card">
+                    <div class="candidate-header">
+                        <strong>{{ candidate['provider'] }}</strong>
+                        <span>{{ candidate['identifier'] }}</span>
+                    </div>
+                    <p><strong>タイトル:</strong> {{ candidate['title'] }}</p>
+                    <p><strong>読み:</strong> {{ candidate['reading'] or '未設定' }}</p>
+                    <p><strong>種別:</strong> {{ candidate['media_type'] }}</p>
+                    <p><strong>出版社:</strong> {{ candidate['publisher'] or '未設定' }}</p>
+                    <p><strong>著者:</strong> {{ candidate['authors'] | join(', ') if candidate['authors'] else '未設定' }}</p>
+                    <div class="actions">
+                        <form method="post" action="{{ url_for('lookup_confirm') }}">
+                            <input type="hidden" name="provider" value="{{ candidate['provider'] }}">
+                            <input type="hidden" name="identifier" value="{{ candidate['identifier'] }}">
+                            <input type="hidden" name="title" value="{{ candidate['title'] }}">
+                            <input type="hidden" name="reading" value="{{ candidate['reading'] }}">
+                            <input type="hidden" name="media_type" value="{{ candidate['media_type'] }}">
+                            <input type="hidden" name="format_type" value="{{ candidate['format_type'] }}">
+                            <input type="hidden" name="publisher" value="{{ candidate['publisher'] }}">
+                            <input type="hidden" name="purchase_source" value="{{ candidate['purchase_source'] }}">
+                            <input type="hidden" name="authors" value="{{ candidate['authors'] | join('\n') }}">
+                            <input type="hidden" name="series" value="{{ candidate['series'] | join('\n') }}">
+                            <input type="hidden" name="tags" value="{{ candidate['tags'] | join('\n') }}">
+                            <input type="hidden" name="search_media_type" value="自動">
+                            <button type="submit">この候補を採用</button>
+                        </form>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p>候補がありません。</p>
+    {% endif %}
+</section>
+{% endblock %}

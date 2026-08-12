@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">データ</p>
+            <h1>JSON インポート</h1>
+        </div>
+    </div>
+    <form method="post" enctype="multipart/form-data">
+        <div class="form-grid single-column">
+            <label>
+                ファイル
+                <input type="file" name="library_file" accept="application/json">
+            </label>
+            <label>
+                方式
+                <select name="mode">
+                    <option value="replace">置換</option>
+                    <option value="merge">統合</option>
+                </select>
+            </label>
+        </div>
+        <div class="actions">
+            <button type="submit">インポート</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">一覧</p>
+            <h1>作品一覧</h1>
+        </div>
+    </div>
+
+    {% set active_filters = [] %}
+    {% if request.args.get('tag') %}
+        {% set _ = active_filters.append('タグ: ' + request.args.get('tag')) %}
+    {% endif %}
+    {% if request.args.get('series') %}
+        {% set _ = active_filters.append('シリーズ: ' + request.args.get('series')) %}
+    {% endif %}
+    {% if request.args.get('person') %}
+        {% set _ = active_filters.append('人物: ' + request.args.get('person')) %}
+    {% endif %}
+
+    {% if active_filters %}
+        <div class="filter-summary">
+            {% for item in active_filters %}
+                <span>{{ item }}</span>
+            {% endfor %}
+            <a class="button secondary small" href="{{ url_for('work_list') }}">絞り込み解除</a>
+        </div>
+    {% endif %}
+
+    <form class="filter-form" method="get">
+        <input type="text" name="q" value="{{ query }}" placeholder="タイトル・読み・タグ・場所で検索">
+        <input type="hidden" name="tag" value="{{ request.args.get('tag', '') }}">
+        <input type="hidden" name="series" value="{{ request.args.get('series', '') }}">
+        <input type="hidden" name="person" value="{{ request.args.get('person', '') }}">
+        <select name="media_type">
+            <option value="">種別: すべて</option>
+            {% for item in media_types %}
+                <option value="{{ item }}" {% if item == media_type %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+        <select name="status">
+            <option value="">状態: すべて</option>
+            {% for item in statuses %}
+                <option value="{{ item }}" {% if item == status %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+        <select name="sort">
+            <option value="title" {% if sort == 'title' %}selected{% endif %}>タイトル順</option>
+            <option value="reading" {% if sort == 'reading' %}selected{% endif %}>読み順</option>
+            <option value="updated_at" {% if sort == 'updated_at' %}selected{% endif %}>更新日時順</option>
+            <option value="created_at" {% if sort == 'created_at' %}selected{% endif %}>登録日時順</option>
+            <option value="evaluation" {% if sort == 'evaluation' %}selected{% endif %}>評価順</option>
+        </select>
+        <button type="submit">検索</button>
+    </form>
+
+    {% if works %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>タイトル</th>
+                    <th>種別</th>
+                    <th>状態</th>
+                    <th>場所</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in works %}
+                    {% set work = item['work'] %}
+                    {% set version = item['version'] %}
+                    <tr>
+                        <td><a href="{{ url_for('work_detail', work_id=work['id']) }}">{{ work['title'] }}</a></td>
+                        <td>{{ version['media_type'] if version else '未設定' }}</td>
+                        <td>{{ version['status'] if version else '未登録' }}</td>
+                        <td>{{ version['location'] if version else '' }}</td>
+                        <td>
+                            <a href="{{ url_for('work_edit', work_id=work['id']) }}">編集</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">作品はまだ登録されていません。</p>
+    {% endif %}
+</section>
+{% endblock %}
