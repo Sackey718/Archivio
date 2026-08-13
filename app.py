@@ -210,6 +210,32 @@ def init_db() -> None:
     conn.close()
 
 
+def normalize_person_name(name: str) -> str:
+    cleaned = (name or "").strip()
+    if not cleaned:
+        return ""
+    cleaned = cleaned.replace("，", ",").replace("、", ",").replace(";", ",")
+    if "," in cleaned:
+        pieces = [piece.strip() for piece in cleaned.split(",") if piece.strip()]
+        if len(pieces) == 2:
+            family, given = pieces[0], pieces[1]
+            if re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", family):
+                return f"{family} {given}".strip()
+            return f"{given} {family}".strip()
+        return " ".join(pieces)
+    return cleaned
+
+
+def normalize_purchase_source(value: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return ""
+    ignored = {"OpenBD", "Rakuten Books", "Google Books", "OpenLibrary", "Discogs", "Amazon"}
+    if cleaned in ignored:
+        return ""
+    return cleaned
+
+
 def split_csv(value: str) -> list[str]:
     if not value:
         return []
@@ -231,7 +257,7 @@ def parse_people_text(value: str) -> list[tuple[str, str]]:
             name, role = item.split(":", 1)
         else:
             name, role = item, ""
-        results.append((name.strip(), role.strip()))
+        results.append((normalize_person_name(name.strip()), role.strip()))
     return results
 
 
@@ -271,7 +297,7 @@ def validate_work_form_data(form_data: dict) -> dict:
 
     authors = []
     if media_type == "書籍":
-        authors = as_text_list(form_data.get("authors"))
+        authors = [normalize_person_name(name) for name in as_text_list(form_data.get("authors")) if normalize_person_name(name)]
 
     people_value = form_data.get("people") or ""
     if isinstance(people_value, (list, tuple, set)):
@@ -350,6 +376,8 @@ def build_bulk_candidate(identifier: str, candidate: dict | None = None) -> dict
     base = candidate or {}
     title = (base.get("title") or f"未確認候補 ({identifier})").strip()
     media_type = (base.get("media_type") or "書籍").strip()
+    authors = [normalize_person_name(str(item).strip()) for item in (base.get("authors") or []) if str(item).strip()]
+    authors = [item for item in authors if item]
     return {
         "identifier": normalize_search_identifier(identifier) or identifier,
         "provider": base.get("provider") or "手動候補",
@@ -359,12 +387,12 @@ def build_bulk_candidate(identifier: str, candidate: dict | None = None) -> dict
         "format_type": (base.get("format_type") or "").strip(),
         "volume": "",
         "publisher": (base.get("publisher") or "").strip(),
-        "purchase_source": (base.get("purchase_source") or "").strip(),
+        "purchase_source": normalize_purchase_source((base.get("purchase_source") or "").strip()),
         "location": "",
         "status": "未読",
         "platform": "",
         "version_title": title,
-        "authors": [str(item).strip() for item in (base.get("authors") or []) if str(item).strip()],
+        "authors": authors,
         "series": [str(item).strip() for item in (base.get("series") or []) if str(item).strip()],
         "tags": [str(item).strip() for item in (base.get("tags") or []) if str(item).strip()],
         "people": [],
@@ -673,6 +701,7 @@ def fetch_openbd_candidate(identifier: str) -> dict | None:
 
     title = normalize_openbd_text(summary.get("title") or "未確認候補")
     title_kana = normalize_openbd_text(summary.get("titleKana") or "")
+    normalized_authors = [normalize_person_name(author) for author in authors or [] if normalize_person_name(author)]
     return {
         "provider": "OpenBD",
         "identifier": normalized,
@@ -681,8 +710,8 @@ def fetch_openbd_candidate(identifier: str) -> dict | None:
         "media_type": infer_media_type_from_identifier(normalized),
         "format_type": "",
         "publisher": publisher_name or summary.get("publisher") or "",
-        "purchase_source": "OpenBD",
-        "authors": authors or [],
+        "purchase_source": "",
+        "authors": normalized_authors,
         "series": [],
         "tags": tags,
     }
@@ -817,7 +846,7 @@ def fetch_openlibrary_candidate(identifier: str) -> dict | None:
                 author_payload = {}
             author_name = normalize_openbd_text(author_payload.get("name") or author.get("name") or "")
             if author_name and author_name not in authors:
-                authors.append(author_name)
+                authors.append(normalize_person_name(author_name))
 
     publish_dates = payload.get("publish_date")
     publish_date = normalize_openbd_text(publish_dates if isinstance(publish_dates, str) else "")
