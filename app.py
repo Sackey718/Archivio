@@ -260,15 +260,41 @@ def validate_work_form_data(form_data: dict) -> dict:
         if evaluation < 1 or evaluation > 5:
             raise ValueError("評価は 1〜5 の整数で入力してください。")
 
+    def as_text_list(value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [line.strip() for line in value.replace("\r", "").splitlines() if line.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return [str(value).strip()] if str(value).strip() else []
+
     authors = []
     if media_type == "書籍":
-        authors = [
-            line.strip()
-            for line in (form_data.get("authors") or "").replace("\r", "").splitlines()
-            if line.strip()
-        ]
+        authors = as_text_list(form_data.get("authors"))
 
-    people = parse_people_text(form_data.get("people") or "")
+    people_value = form_data.get("people") or ""
+    if isinstance(people_value, (list, tuple, set)):
+        people = []
+        for item in people_value:
+            if isinstance(item, tuple) and len(item) == 2:
+                people.append((str(item[0]).strip(), str(item[1]).strip()))
+            elif isinstance(item, str):
+                people.extend(parse_people_text(item))
+    else:
+        people = parse_people_text(str(people_value))
+
+    tags_value = form_data.get("tags") or ""
+    if isinstance(tags_value, (list, tuple, set)):
+        tag_text = ", ".join(str(item) for item in tags_value if str(item).strip())
+    else:
+        tag_text = str(tags_value)
+
+    series_value = form_data.get("series") or ""
+    if isinstance(series_value, (list, tuple, set)):
+        series_text = ", ".join(str(item) for item in series_value if str(item).strip())
+    else:
+        series_text = str(series_value)
 
     payload = {
         "title": title,
@@ -284,8 +310,8 @@ def validate_work_form_data(form_data: dict) -> dict:
         "location": (form_data.get("location") or "").strip(),
         "status": status,
         "platform": (form_data.get("platform") or "").strip(),
-        "tags": split_csv(form_data.get("tags") or ""),
-        "series": split_csv(form_data.get("series") or ""),
+        "tags": split_csv(tag_text),
+        "series": split_csv(series_text),
         "people": people,
         "authors": authors,
     }
@@ -302,6 +328,106 @@ def normalize_search_identifier(identifier: str) -> str:
     if len(digits) in {8, 10, 13}:
         return digits
     return digits
+
+
+def parse_bulk_identifier_text(raw: str) -> list[str]:
+    if raw is None:
+        return []
+    text = str(raw).replace("、", ",").replace("；", ";")
+    seen: set[str] = set()
+    results: list[str] = []
+    for segment in re.split(r"[\n,;\r]+", text):
+        for token in re.split(r"\s+", segment.strip()):
+            normalized = normalize_search_identifier(token)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            results.append(normalized)
+    return results
+
+
+def build_bulk_candidate(identifier: str, candidate: dict | None = None) -> dict:
+    base = candidate or {}
+    title = (base.get("title") or f"未確認候補 ({identifier})").strip()
+    media_type = (base.get("media_type") or "書籍").strip()
+    return {
+        "identifier": normalize_search_identifier(identifier) or identifier,
+        "provider": base.get("provider") or "手動候補",
+        "title": title,
+        "reading": (base.get("reading") or "").strip(),
+        "media_type": media_type,
+        "format_type": (base.get("format_type") or "").strip(),
+        "volume": "",
+        "publisher": (base.get("publisher") or "").strip(),
+        "purchase_source": (base.get("purchase_source") or "").strip(),
+        "location": "",
+        "status": "未読",
+        "platform": "",
+        "version_title": title,
+        "authors": [str(item).strip() for item in (base.get("authors") or []) if str(item).strip()],
+        "series": [str(item).strip() for item in (base.get("series") or []) if str(item).strip()],
+        "tags": [str(item).strip() for item in (base.get("tags") or []) if str(item).strip()],
+        "people": [],
+        "notes": "",
+        "evaluation": None,
+    }
+
+
+def save_work_payload(conn: sqlite3.Connection, payload: dict) -> str:
+    work_id = str(uuid.uuid4())
+    title = payload["title"]
+    reading = payload["reading"]
+    evaluation = payload["evaluation"]
+    notes = payload["notes"]
+    version_title = payload["version_title"]
+    media_type = payload["media_type"]
+    format_type = payload["format_type"]
+    volume = payload["volume"]
+    publisher = payload["publisher"]
+    purchase_source = payload["purchase_source"]
+    location = payload["location"]
+    status = payload["status"]
+    platform = payload["platform"]
+    tags = payload["tags"]
+    series = payload["series"]
+    people = payload["people"]
+    authors = payload["authors"]
+    now = utc_now()
+
+    conn.execute(
+        """
+        INSERT INTO works (id, title, reading, evaluation, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (work_id, title, reading, evaluation, notes, now, now),
+    )
+    conn.execute(
+        """
+        INSERT INTO versions (
+            id, work_id, title, media_type, format_type, volume,
+            publisher, purchase_source, location, status, platform,
+            release_date, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(uuid.uuid4()),
+            work_id,
+            version_title,
+            media_type,
+            format_type,
+            volume,
+            publisher,
+            purchase_source,
+            location,
+            status,
+            platform,
+            "",
+            now,
+            now,
+        ),
+    )
+    sync_work_metadata(conn, work_id, tags, series, people, authors)
+    return work_id
 
 
 def infer_media_type_from_identifier(identifier: str) -> str:
@@ -1316,6 +1442,121 @@ def work_list():
     )
 
 
+@app.route("/works/bulk", methods=["GET", "POST"])
+def work_bulk_add():
+    if request.method == "POST":
+        if g.read_only_mode:
+            flash("JSON同期に問題があるため、一括追加はできません。")
+            return redirect(url_for("work_bulk_add"))
+
+        identifiers = parse_bulk_identifier_text(request.form.get("identifiers") or "")
+        if not identifiers:
+            flash("ISBN / JAN / ASIN を 1 件以上入力してください。")
+            return redirect(url_for("work_bulk_add"))
+
+        candidates = []
+        for identifier in identifiers:
+            candidate = lookup_external_candidates(identifier, "自動")
+            selected = (candidate[0] if candidate else {})
+            candidates.append(build_bulk_candidate(identifier, selected))
+
+        session["bulk_candidates"] = json.dumps(candidates, ensure_ascii=False)
+        return redirect(url_for("work_bulk_review"))
+
+    return render_template("bulk_add.html", sync_warning=g.sync_warning, read_only_mode=g.read_only_mode)
+
+
+@app.route("/works/bulk/review", methods=["GET", "POST"])
+def work_bulk_review():
+    raw_candidates = session.get("bulk_candidates")
+    if not raw_candidates:
+        return redirect(url_for("work_bulk_add"))
+
+    if request.method == "POST":
+        if g.read_only_mode:
+            flash("JSON同期に問題があるため、一括追加はできません。")
+            return redirect(url_for("work_bulk_review"))
+
+        identifiers = request.form.getlist("identifier")
+        if not identifiers:
+            flash("保存対象がありません。")
+            return redirect(url_for("work_bulk_add"))
+
+        candidate_count = len(identifiers)
+        payloads = []
+        for index in range(candidate_count):
+            fields = {
+                "title": request.form.getlist("title")[index] if index < len(request.form.getlist("title")) else "",
+                "reading": request.form.getlist("reading")[index] if index < len(request.form.getlist("reading")) else "",
+                "media_type": request.form.getlist("media_type")[index] if index < len(request.form.getlist("media_type")) else "書籍",
+                "format_type": request.form.getlist("format_type")[index] if index < len(request.form.getlist("format_type")) else "",
+                "publisher": request.form.getlist("publisher")[index] if index < len(request.form.getlist("publisher")) else "",
+                "purchase_source": request.form.getlist("purchase_source")[index] if index < len(request.form.getlist("purchase_source")) else "",
+                "version_title": request.form.getlist("version_title")[index] if index < len(request.form.getlist("version_title")) else "",
+                "status": request.form.getlist("status")[index] if index < len(request.form.getlist("status")) else "未読",
+                "tags": request.form.getlist("tags")[index] if index < len(request.form.getlist("tags")) else "",
+                "series": request.form.getlist("series")[index] if index < len(request.form.getlist("series")) else "",
+                "people": request.form.getlist("people")[index] if index < len(request.form.getlist("people")) else "",
+                "authors": request.form.getlist("authors")[index] if index < len(request.form.getlist("authors")) else "",
+                "notes": request.form.getlist("notes")[index] if index < len(request.form.getlist("notes")) else "",
+                "location": request.form.getlist("location")[index] if index < len(request.form.getlist("location")) else "",
+                "platform": request.form.getlist("platform")[index] if index < len(request.form.getlist("platform")) else "",
+                "volume": request.form.getlist("volume")[index] if index < len(request.form.getlist("volume")) else "",
+                "evaluation": request.form.getlist("evaluation")[index] if index < len(request.form.getlist("evaluation")) else "",
+            }
+            if not fields["title"].strip():
+                continue
+            payload = {
+                "title": fields["title"],
+                "reading": fields["reading"],
+                "evaluation": fields["evaluation"],
+                "notes": fields["notes"],
+                "version_title": fields["version_title"] or fields["title"],
+                "media_type": fields["media_type"] or "書籍",
+                "format_type": fields["format_type"],
+                "volume": fields["volume"],
+                "publisher": fields["publisher"],
+                "purchase_source": fields["purchase_source"],
+                "location": fields["location"],
+                "status": fields["status"],
+                "platform": fields["platform"],
+                "tags": fields["tags"],
+                "series": fields["series"],
+                "people": fields["people"],
+                "authors": fields["authors"],
+            }
+            payloads.append((identifiers[index], validate_work_form_data(payload)))
+
+        if not payloads:
+            flash("保存対象がありません。")
+            return redirect(url_for("work_bulk_add"))
+
+        conn = get_db()
+        try:
+            created_ids = []
+            for _, payload in payloads:
+                created_ids.append(save_work_payload(conn, payload))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            flash(f"一括追加中にエラーが発生しました: {exc}")
+            return redirect(url_for("work_bulk_review"))
+        finally:
+            conn.close()
+
+        session.pop("bulk_candidates", None)
+        write_library_json()
+        flash(f"{len(created_ids)} 件を一括追加しました。")
+        return redirect(url_for("work_list"))
+
+    try:
+        candidates = json.loads(raw_candidates)
+    except json.JSONDecodeError:
+        candidates = []
+
+    return render_template("bulk_review.html", candidates=candidates, sync_warning=g.sync_warning, read_only_mode=g.read_only_mode)
+
+
 @app.route("/works/new", methods=["GET", "POST"])
 def work_new():
     if request.method == "POST":
@@ -1329,61 +1570,9 @@ def work_new():
             flash(str(exc))
             return redirect(url_for("work_new"))
 
-        work_id = str(uuid.uuid4())
-        title = payload["title"]
-        reading = payload["reading"]
-        evaluation = payload["evaluation"]
-        notes = payload["notes"]
-        version_title = payload["version_title"]
-        media_type = payload["media_type"]
-        format_type = payload["format_type"]
-        volume = payload["volume"]
-        publisher = payload["publisher"]
-        purchase_source = payload["purchase_source"]
-        location = payload["location"]
-        status = payload["status"]
-        platform = payload["platform"]
-        tags = payload["tags"]
-        series = payload["series"]
-        people = payload["people"]
-        authors = payload["authors"]
-        now = utc_now()
-
         conn = get_db()
         try:
-            conn.execute(
-                """
-                INSERT INTO works (id, title, reading, evaluation, notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (work_id, title, reading, evaluation, notes, now, now),
-            )
-            conn.execute(
-                """
-                INSERT INTO versions (
-                    id, work_id, title, media_type, format_type, volume,
-                    publisher, purchase_source, location, status, platform,
-                    release_date, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(uuid.uuid4()),
-                    work_id,
-                    version_title,
-                    media_type,
-                    format_type,
-                    volume,
-                    publisher,
-                    purchase_source,
-                    location,
-                    status,
-                    platform,
-                    "",
-                    now,
-                    now,
-                ),
-            )
-            sync_work_metadata(conn, work_id, tags, series, people, authors)
+            work_id = save_work_payload(conn, payload)
             conn.commit()
         finally:
             conn.close()
@@ -1725,7 +1914,17 @@ def import_library():
 @app.route("/tags")
 def tag_list():
     conn = get_db()
-    rows = conn.execute("SELECT name, COUNT(*) AS count FROM tags GROUP BY name ORDER BY name COLLATE NOCASE").fetchall()
+    cleanup_orphaned_records(conn)
+    rows = conn.execute(
+        """
+        SELECT t.name, COUNT(wt.tag_id) AS count
+        FROM tags t
+        LEFT JOIN work_tags wt ON wt.tag_id = t.id
+        GROUP BY t.name
+        HAVING COUNT(wt.tag_id) > 0
+        ORDER BY t.name COLLATE NOCASE
+        """
+    ).fetchall()
     conn.close()
     return render_template("tag_list.html", rows=rows, sync_warning=g.sync_warning, read_only_mode=g.read_only_mode)
 
@@ -1733,7 +1932,17 @@ def tag_list():
 @app.route("/series")
 def series_list():
     conn = get_db()
-    rows = conn.execute("SELECT name, COUNT(*) AS count FROM series GROUP BY name ORDER BY name COLLATE NOCASE").fetchall()
+    cleanup_orphaned_records(conn)
+    rows = conn.execute(
+        """
+        SELECT s.name, COUNT(ws.series_id) AS count
+        FROM series s
+        LEFT JOIN work_series ws ON ws.series_id = s.id
+        GROUP BY s.name
+        HAVING COUNT(ws.series_id) > 0
+        ORDER BY s.name COLLATE NOCASE
+        """
+    ).fetchall()
     conn.close()
     return render_template("series_list.html", rows=rows, sync_warning=g.sync_warning, read_only_mode=g.read_only_mode)
 
@@ -1741,7 +1950,17 @@ def series_list():
 @app.route("/people")
 def people_list():
     conn = get_db()
-    rows = conn.execute("SELECT name, COUNT(*) AS count FROM people GROUP BY name ORDER BY name COLLATE NOCASE").fetchall()
+    cleanup_orphaned_records(conn)
+    rows = conn.execute(
+        """
+        SELECT p.name, COUNT(wp.person_id) AS count
+        FROM people p
+        LEFT JOIN work_people wp ON wp.person_id = p.id
+        GROUP BY p.name
+        HAVING COUNT(wp.person_id) > 0
+        ORDER BY p.name COLLATE NOCASE
+        """
+    ).fetchall()
     conn.close()
     return render_template("people_list.html", rows=rows, sync_warning=g.sync_warning, read_only_mode=g.read_only_mode)
 

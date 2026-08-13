@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">登録</p>
+            <h1>一括追加</h1>
+        </div>
+    </div>
+
+    <form method="post">
+        <div class="form-grid single-column">
+            <label>
+                ISBN / JAN / ASIN を複数入力
+                <textarea name="identifiers" rows="12" placeholder="9784040000000&#10;978-4-04-000000-0&#10;B0000000001"></textarea>
+            </label>
+        </div>
+        <div class="form-hint">
+            改行、カンマ、セミコロン区切りで複数件入力できます。重複は自動で除外されます。
+        </div>
+        <div class="actions">
+            <button type="submit">一括追加</button>
+            <a class="button secondary" href="{{ url_for('work_list') }}">キャンセル</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

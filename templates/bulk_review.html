@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel large-form">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">登録</p>
+            <h1>一括追加（保存前に編集）</h1>
+        </div>
+    </div>
+
+    <form method="post">
+        {% for candidate in candidates %}
+        <div class="panel" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border);">
+            <div class="meta-row">
+                <strong>{{ candidate.provider }}</strong>
+                <span>{{ candidate.identifier }}</span>
+            </div>
+            <input type="hidden" name="identifier" value="{{ candidate.identifier }}">
+            <div class="form-grid">
+                <label>
+                    タイトル
+                    <input type="text" name="title" value="{{ candidate.title }}" required>
+                </label>
+                <label>
+                    読み
+                    <input type="text" name="reading" value="{{ candidate.reading }}">
+                </label>
+                <label>
+                    評価
+                    <select name="evaluation">
+                        <option value="">未評価</option>
+                        <option value="1" {% if candidate.evaluation == 1 %}selected{% endif %}>★☆☆☆☆</option>
+                        <option value="2" {% if candidate.evaluation == 2 %}selected{% endif %}>★★☆☆☆</option>
+                        <option value="3" {% if candidate.evaluation == 3 %}selected{% endif %}>★★★☆☆</option>
+                        <option value="4" {% if candidate.evaluation == 4 %}selected{% endif %}>★★★★☆</option>
+                        <option value="5" {% if candidate.evaluation == 5 %}selected{% endif %}>★★★★★</option>
+                    </select>
+                </label>
+                <label>
+                    状態
+                    <select name="status">
+                        <option value="未読" {% if candidate.status == '未読' %}selected{% endif %}>未読</option>
+                        <option value="読書中" {% if candidate.status == '読書中' %}selected{% endif %}>読書中</option>
+                        <option value="読了" {% if candidate.status == '読了' %}selected{% endif %}>読了</option>
+                    </select>
+                </label>
+                <label>
+                    メディア種別
+                    <select name="media_type">
+                        <option value="書籍" {% if candidate.media_type == '書籍' %}selected{% endif %}>書籍</option>
+                        <option value="マンガ" {% if candidate.media_type == 'マンガ' %}selected{% endif %}>マンガ</option>
+                        <option value="雑誌" {% if candidate.media_type == '雑誌' %}selected{% endif %}>雑誌</option>
+                        <option value="CD" {% if candidate.media_type == 'CD' %}selected{% endif %}>CD</option>
+                        <option value="DVD" {% if candidate.media_type == 'DVD' %}selected{% endif %}>DVD</option>
+                        <option value="Blu-ray" {% if candidate.media_type == 'Blu-ray' %}selected{% endif %}>Blu-ray</option>
+                        <option value="4K UHD" {% if candidate.media_type == '4K UHD' %}selected{% endif %}>4K UHD</option>
+                    </select>
+                </label>
+                <label>
+                    形式 / 版
+                    <input type="text" name="format_type" value="{{ candidate.format_type }}">
+                </label>
+                <label>
+                    巻・号
+                    <input type="text" name="volume" value="{{ candidate.volume }}">
+                </label>
+                <label>
+                    出版社
+                    <input type="text" name="publisher" value="{{ candidate.publisher }}">
+                </label>
+                <label>
+                    購入先
+                    <input type="text" name="purchase_source" value="{{ candidate.purchase_source }}">
+                </label>
+                <label>
+                    所有場所
+                    <input type="text" name="location" value="{{ candidate.location }}">
+                </label>
+                <label>
+                    プラットフォーム
+                    <input type="text" name="platform" value="{{ candidate.platform }}">
+                </label>
+                <label>
+                    バージョン名
+                    <input type="text" name="version_title" value="{{ candidate.version_title }}">
+                </label>
+                <label>
+                    タグ
+                    <input type="text" name="tags" value="{{ candidate.tags | join(', ') }}" placeholder="例: ミステリー, お気に入り">
+                </label>
+                <label>
+                    シリーズ
+                    <input type="text" name="series" value="{{ candidate.series | join(', ') }}" placeholder="例: シリーズX, シリーズY">
+                </label>
+                <label>
+                    著者
+                    <input type="text" name="authors" value="{{ candidate.authors | join(', ') }}" placeholder="例: 東野圭吾 / 村上春樹">
+                </label>
+                <label class="full-width">
+                    人物
+                    <textarea name="people" placeholder="例: 東野圭吾|著者&#10;Aさん|原作">{{ candidate.people | join('\n') }}</textarea>
+                </label>
+                <label class="full-width">
+                    メモ
+                    <textarea name="notes">{{ candidate.notes }}</textarea>
+                </label>
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="actions">
+            <button type="submit">保存</button>
+            <a class="button secondary" href="{{ url_for('work_bulk_add') }}">戻る</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

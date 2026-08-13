@@ -13,6 +13,9 @@
         <input type="text" name="identifier" value="" placeholder="ISBN / JAN / ASIN を入力" class="lookup-identifier-input">
         <button type="submit">検索</button>
     </form>
+    <div class="actions" style="margin-bottom: 1rem;">
+        <a class="button secondary" href="{{ url_for('work_bulk_add') }}">一括追加</a>
+    </div>
 
     <form method="post">
         <div class="form-grid">
