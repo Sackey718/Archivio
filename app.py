@@ -261,6 +261,23 @@ def parse_people_text(value: str) -> list[tuple[str, str]]:
     return results
 
 
+def extract_series_sort_key(series_name: str) -> tuple:
+    """シリーズ名から末尾の数字を抽出してソートキーを返す"""
+    match = re.search(r'(\d+)(?!.*\d)', series_name)
+    if match:
+        try:
+            number = int(match.group(1))
+            return (0, number, series_name)
+        except ValueError:
+            pass
+    return (1, 0, series_name)
+
+
+def sort_series_list(series_list: list) -> list:
+    """シリーズリストを数値順でソート"""
+    return sorted(series_list, key=lambda x: extract_series_sort_key(x if isinstance(x, str) else x.get("name", "")))
+
+
 def validate_work_form_data(form_data: dict) -> dict:
     title = (form_data.get("title") or "").strip()
     if not title:
@@ -295,9 +312,7 @@ def validate_work_form_data(form_data: dict) -> dict:
             return [str(item).strip() for item in value if str(item).strip()]
         return [str(value).strip()] if str(value).strip() else []
 
-    authors = []
-    if media_type == "書籍":
-        authors = [normalize_person_name(name) for name in as_text_list(form_data.get("authors")) if normalize_person_name(name)]
+    authors = [normalize_person_name(name) for name in as_text_list(form_data.get("authors")) if normalize_person_name(name)]
 
     people_value = form_data.get("people") or ""
     if isinstance(people_value, (list, tuple, set)):
@@ -356,6 +371,44 @@ def normalize_search_identifier(identifier: str) -> str:
     return digits
 
 
+def infer_media_type_from_rakuten_item(item: dict | None, identifier: str, preferred_media_type: str | None = None) -> str:
+    normalized = normalize_search_identifier(identifier)
+    if not normalized:
+        return "書籍"
+
+    text_candidates = []
+    if isinstance(item, dict):
+        for key in ("title", "itemName", "itemCaption", "medium", "media", "categoryName", "genre", "typeName"):
+            value = item.get(key)
+            if value is not None:
+                text_candidates.append(str(value))
+    text = " ".join(normalize_openbd_text(value) for value in text_candidates if normalize_openbd_text(value)).upper()
+
+    if re.search(r"4K\s*UHD|UHD", text):
+        return "4K UHD"
+    if re.search(r"BLU[- ]?RAY|BD\b|Blu-ray", text):
+        return "Blu-ray"
+    if re.search(r"DVD|VIDEO|映像", text):
+        return "DVD"
+    if re.search(r"CD|ALBUM|SINGLE|MUSIC", text):
+        return "CD"
+
+    if normalized.startswith("454"):
+        return "Blu-ray"
+    if normalized.startswith("4988"):
+        return "DVD"
+    if normalized.startswith(("457", "490", "494")):
+        return "CD"
+    if normalized.startswith("498"):
+        return "CD"
+
+    if preferred_media_type == "CD":
+        return "CD"
+    if preferred_media_type == "映像":
+        return "Blu-ray" if normalized.startswith("454") else "DVD"
+    return infer_media_type_from_identifier(normalized)
+
+
 def parse_bulk_identifier_text(raw: str) -> list[str]:
     if raw is None:
         return []
@@ -388,8 +441,8 @@ def build_bulk_candidate(identifier: str, candidate: dict | None = None) -> dict
         "volume": "",
         "publisher": (base.get("publisher") or "").strip(),
         "purchase_source": normalize_purchase_source((base.get("purchase_source") or "").strip()),
-        "location": "",
-        "status": "未読",
+        "location": "実家",
+        "status": "読了",
         "platform": "",
         "version_title": title,
         "authors": authors,
@@ -578,13 +631,13 @@ def fetch_rakuten_cd_candidate(identifier: str, preferred_media_type: str | None
         "identifier": normalized,
         "title": title,
         "reading": title_kana,
-        "media_type": media_type,
+        "media_type": "CD",
         "format_type": "",
         "publisher": publisher,
-        "purchase_source": "Rakuten Books",
+        "purchase_source": "",
         "authors": authors,
         "series": [],
-        "tags": [media_type],
+        "tags": ["CD"],
     }
 
 
@@ -637,13 +690,13 @@ def fetch_rakuten_video_candidate(identifier: str, preferred_media_type: str | N
         "identifier": normalized,
         "title": title,
         "reading": title_kana,
-        "media_type": media_type,
+        "media_type": "Blu-ray",
         "format_type": "",
         "publisher": publisher,
-        "purchase_source": "Rakuten Books",
+        "purchase_source": "",
         "authors": authors,
         "series": [],
-        "tags": [media_type],
+        "tags": ["Blu-ray"],
     }
 
 
@@ -911,23 +964,15 @@ def lookup_external_candidates(identifier: str, preferred_media_type: str | None
 
     auto_media_type = (preferred_media_type or "").strip()
     if auto_media_type in ("", "自動"):
-        inferred = resolve_media_type_for_lookup(normalized, preferred_media_type)
         if normalized.startswith("978"):
             pass
-        elif inferred == "CD":
+        elif len(normalized) == 13:
             rakuten_cd_candidate = fetch_rakuten_cd_candidate(normalized, "CD")
             if rakuten_cd_candidate:
                 return [rakuten_cd_candidate]
             rakuten_video_candidate = fetch_rakuten_video_candidate(normalized, "映像")
             if rakuten_video_candidate:
                 return [rakuten_video_candidate]
-        elif inferred in {"DVD", "Blu-ray"}:
-            rakuten_video_candidate = fetch_rakuten_video_candidate(normalized, "映像")
-            if rakuten_video_candidate:
-                return [rakuten_video_candidate]
-            rakuten_cd_candidate = fetch_rakuten_cd_candidate(normalized, "CD")
-            if rakuten_cd_candidate:
-                return [rakuten_cd_candidate]
 
     if preferred_media_type == "CD":
         rakuten_cd_candidate = fetch_rakuten_cd_candidate(normalized, preferred_media_type)
@@ -1528,7 +1573,7 @@ def work_bulk_review():
                 "people": request.form.getlist("people")[index] if index < len(request.form.getlist("people")) else "",
                 "authors": request.form.getlist("authors")[index] if index < len(request.form.getlist("authors")) else "",
                 "notes": request.form.getlist("notes")[index] if index < len(request.form.getlist("notes")) else "",
-                "location": request.form.getlist("location")[index] if index < len(request.form.getlist("location")) else "",
+                "location": request.form.getlist("location")[index] if index < len(request.form.getlist("location")) else "実家",
                 "platform": request.form.getlist("platform")[index] if index < len(request.form.getlist("platform")) else "",
                 "volume": request.form.getlist("volume")[index] if index < len(request.form.getlist("volume")) else "",
                 "evaluation": request.form.getlist("evaluation")[index] if index < len(request.form.getlist("evaluation")) else "",
@@ -1546,8 +1591,8 @@ def work_bulk_review():
                 "volume": fields["volume"],
                 "publisher": fields["publisher"],
                 "purchase_source": fields["purchase_source"],
-                "location": fields["location"],
-                "status": fields["status"],
+                "location": fields["location"] or "実家",
+                "status": fields["status"] or "読了",
                 "platform": fields["platform"],
                 "tags": fields["tags"],
                 "series": fields["series"],
@@ -1621,6 +1666,8 @@ def work_new():
         "series": ", ".join(request.args.getlist("series") or []),
         "people": request.args.get("people", ""),
         "authors": "\n".join(request.args.getlist("authors") or []),
+        "location": "実家",
+        "status": "読了",
     }
     return render_template("work_form.html", work=None, version=None, tags=defaults["tags"], series=defaults["series"], people=defaults["people"], authors=defaults["authors"], defaults=defaults, sync_warning=g.sync_warning, read_only_mode=g.read_only_mode)
 
@@ -1652,6 +1699,7 @@ def work_detail(work_id):
         """,
         (work_id,),
     ).fetchall()
+    series = sort_series_list([row["name"] for row in series])
     people = conn.execute(
         """
         SELECT p.name, wp.role FROM people p
@@ -1750,17 +1798,17 @@ def work_edit(work_id):
         conn.close()
         write_library_json()
         flash("作品を更新しました。")
-        return redirect(url_for("work_detail", work_id=work_id))
+        return redirect(url_for("work_list"))
 
     version = conn.execute("SELECT * FROM versions WHERE work_id = ? ORDER BY created_at DESC LIMIT 1", (work_id,)).fetchone()
     tag_names = [tag["name"] for tag in conn.execute(
         "SELECT t.name FROM tags t JOIN work_tags wt ON wt.tag_id = t.id WHERE wt.work_id = ? ORDER BY t.name COLLATE NOCASE",
         (work_id,),
     ).fetchall()]
-    series_names = [s["name"] for s in conn.execute(
+    series_names = sort_series_list([s["name"] for s in conn.execute(
         "SELECT s.name FROM series s JOIN work_series ws ON ws.series_id = s.id WHERE ws.work_id = ? ORDER BY s.name COLLATE NOCASE",
         (work_id,),
-    ).fetchall()]
+    ).fetchall()])
     people_names = [
         f"{p['name']}|{p['role']}" if p['role'] else p['name']
         for p in conn.execute(

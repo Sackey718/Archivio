@@ -45,9 +45,9 @@
             <label>
                 状態
                 <select name="status">
-                    <option value="未読" {% if work and version and version['status'] == '未読' %}selected{% endif %}>未読</option>
-                    <option value="読書中" {% if work and version and version['status'] == '読書中' %}selected{% endif %}>読書中</option>
-                    <option value="読了" {% if work and version and version['status'] == '読了' %}selected{% endif %}>読了</option>
+                    <option value="未読" {% if work and version and version['status'] == '未読' %}selected{% elif not work and defaults and defaults.get('status') == '未読' %}selected{% endif %}>未読</option>
+                    <option value="読書中" {% if work and version and version['status'] == '読書中' %}selected{% elif not work and defaults and defaults.get('status') == '読書中' %}selected{% endif %}>読書中</option>
+                    <option value="読了" {% if work and version and version['status'] == '読了' %}selected{% elif not work and (not defaults or defaults.get('status') == '読了') %}selected{% endif %}>読了</option>
                 </select>
             </label>
             <label>
@@ -80,7 +80,7 @@
             </label>
             <label>
                 所有場所
-                <input type="text" name="location" value="{{ version['location'] if version else '' }}">
+                <input type="text" name="location" value="{{ version['location'] if version else defaults['location'] if defaults else '実家' }}">
             </label>
             <label>
                 プラットフォーム
