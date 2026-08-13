@@ -63,7 +63,6 @@ def ensure_config() -> None:
         default_config = {
             "api_providers": [
                 "国会図書館",
-                "OpenBD",
                 "楽天ブックス",
                 "Discogs",
                 "Amazon",
@@ -76,7 +75,7 @@ def ensure_config() -> None:
     else:
         config = load_config()
         config.setdefault("json_file", "library.json")
-        config.setdefault("api_providers", ["国会図書館", "OpenBD", "楽天ブックス", "Discogs", "Amazon"])
+        config.setdefault("api_providers", ["国会図書館", "楽天ブックス", "Discogs", "Amazon"])
         config.setdefault("rakuten_app_id", "")
         config.setdefault("rakuten_access_key", "")
         CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -607,6 +606,7 @@ def fetch_rakuten_cd_candidate(identifier: str, preferred_media_type: str | None
                 "format": "json",
                 "jan": normalized,
                 "hits": 1,
+                "outOfStockFlag": 1,
             },
             timeout=15,
         )
@@ -666,6 +666,7 @@ def fetch_rakuten_video_candidate(identifier: str, preferred_media_type: str | N
                 "format": "json",
                 "jan": normalized,
                 "hits": 1,
+                "outOfStockFlag": 1,
             },
             timeout=15,
         )
@@ -700,73 +701,66 @@ def fetch_rakuten_video_candidate(identifier: str, preferred_media_type: str | N
     }
 
 
-def fetch_openbd_candidate(identifier: str) -> dict | None:
+def fetch_rakuten_book_candidate(identifier: str, preferred_media_type: str | None = None) -> dict | None:
     normalized = normalize_search_identifier(identifier)
     if not normalized:
         return None
 
+    app_id = get_rakuten_app_id()
+    access_key = get_rakuten_access_key()
+    if not app_id or not access_key:
+        return None
+
     try:
-        response = requests.get("https://api.openbd.jp/v1/get", params={"isbn": normalized}, timeout=10)
+        response = requests.get(
+            "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404",
+            params={
+                "applicationId": app_id,
+                "accessKey": access_key,
+                "format": "json",
+                "isbn": normalized,
+                "hits": 1,
+                "outOfStockFlag": 1,
+            },
+            timeout=15,
+        )
         response.raise_for_status()
         payload = response.json()
     except Exception:
         return None
 
-    if not isinstance(payload, list) or not payload:
+    items = payload.get("Items") or []
+    if not items:
         return None
 
-    item = payload[0]
-    if not isinstance(item, dict):
-        return None
+    item = items[0].get("Item") or {}
 
-    summary = item.get("summary") or {}
-    onix = item.get("onix") or {}
-    descriptive_detail = onix.get("DescriptiveDetail") or {}
-    publishing_detail = onix.get("PublishingDetail") or {}
-    contributors = descriptive_detail.get("Contributor") or []
-    subjects = descriptive_detail.get("Subject") or []
-    publishers = publishing_detail.get("Publisher") or []
+    title = normalize_openbd_text(item.get("title") or "未確認候補")
+    title_kana = normalize_openbd_text(item.get("titleKana") or "")
 
+    author_text = normalize_openbd_text(item.get("author") or "")
     authors = []
-    for contributor in contributors:
-        if isinstance(contributor, dict):
-            name = contributor.get("PersonName") or contributor.get("CorporateName") or ""
-            normalized_name = normalize_openbd_text(name)
+    if author_text:
+        for piece in re.split(r"[、,/;]", author_text):
+            normalized_name = normalize_person_name(piece)
             if normalized_name and normalized_name not in authors:
                 authors.append(normalized_name)
 
-    tags = []
-    for subject in subjects:
-        if isinstance(subject, dict):
-            code = subject.get("SubjectCode") or subject.get("SubjectHeadingText") or ""
-            normalized_code = normalize_openbd_text(code)
-            if normalized_code and normalized_code not in tags:
-                tags.append(normalized_code)
+    publisher = normalize_openbd_text(item.get("publisherName") or "")
+    series_name = normalize_openbd_text(item.get("seriesName") or "")
 
-    publisher_name = ""
-    for publisher in publishers:
-        if isinstance(publisher, dict):
-            name = publisher.get("PublisherName") or ""
-            normalized_name = normalize_openbd_text(name)
-            if normalized_name:
-                publisher_name = normalized_name
-                break
-
-    title = normalize_openbd_text(summary.get("title") or "未確認候補")
-    title_kana = normalize_openbd_text(summary.get("titleKana") or "")
-    normalized_authors = [normalize_person_name(author) for author in authors or [] if normalize_person_name(author)]
     return {
-        "provider": "OpenBD",
+        "provider": "楽天ブックス",
         "identifier": normalized,
         "title": title,
         "reading": title_kana,
         "media_type": infer_media_type_from_identifier(normalized),
         "format_type": "",
-        "publisher": publisher_name or summary.get("publisher") or "",
+        "publisher": publisher,
         "purchase_source": "",
-        "authors": normalized_authors,
-        "series": [],
-        "tags": tags,
+        "authors": authors,
+        "series": [series_name] if series_name else [],
+        "tags": [],
     }
 
 
@@ -993,9 +987,9 @@ def lookup_external_candidates(identifier: str, preferred_media_type: str | None
         if rakuten_cd_candidate:
             return [rakuten_cd_candidate]
 
-    openbd_candidate = fetch_openbd_candidate(normalized)
-    if openbd_candidate:
-        return [openbd_candidate]
+    rakuten_book_candidate = fetch_rakuten_book_candidate(normalized, preferred_media_type)
+    if rakuten_book_candidate:
+        return [rakuten_book_candidate]
 
     discogs_candidate = fetch_discogs_candidate(normalized, preferred_media_type)
     if discogs_candidate:
@@ -1049,7 +1043,7 @@ def lookup_external_candidates(identifier: str, preferred_media_type: str | None
     candidates = []
     for provider, title in [
         ("国会図書館", base["title"]),
-        ("OpenBD", base["title"]),
+        ("楽天ブックス", base["title"]),
         ("Amazon", base["title"]),
     ]:
         candidate = {
